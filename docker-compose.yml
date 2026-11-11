@@ -1,0 +1,30 @@
+services:
+  studyflow-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: studyflow-api
+    env_file: .env
+    environment:
+      DATABASE_URL: sqlite:////data/studyflow.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - studyflow_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  studyflow-web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: studyflow-web
+    ports:
+      - "5173:80"
+    depends_on:
+      studyflow-api:
+        condition: service_healthy
+volumes:
+  studyflow_data:

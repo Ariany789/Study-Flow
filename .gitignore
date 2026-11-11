@@ -1,0 +1,17 @@
+.env
+*.db
+__pycache__/
+.pytest_cache/
+.venv/
+node_modules/
+dist/
+build/
+dist-installer/
+tools/studyflow.ico
+*.pyc
+
+# Arquivos locais e temporários
+*.lnk
+pytest-cache-files-*/
+
+*.tsbuildinfo
