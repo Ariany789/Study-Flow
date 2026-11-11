@@ -4,14 +4,10 @@ from __future__ import annotations
 import ctypes
 import os
 import secrets
-import socket
 import sys
 import threading
 import time
 import traceback
-import urllib.error
-import urllib.request
-import webbrowser
 from pathlib import Path
 
 
@@ -27,7 +23,8 @@ def data_root() -> Path:
 
 
 def show_error(message: str) -> None:
-    ctypes.windll.user32.MessageBoxW(None, message, "StudyFlow", 0x10)
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    user32.MessageBoxW(None, message, "StudyFlow", 0x10)
 
 
 def set_runtime_environment() -> Path:
@@ -47,42 +44,36 @@ def set_runtime_environment() -> Path:
     return data
 
 
-def acquire_single_instance(data: Path) -> int | None:
-    mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "Local\\StudyFlow.Desktop")
-    if ctypes.windll.kernel32.GetLastError() == 183:
-        url_path = data / "instance-url"
-        try:
-            url = url_path.read_text(encoding="ascii").strip()
-            if url:
-                webbrowser.open(url)
-        except OSError:
-            pass
+def acquire_single_instance() -> int | None:
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p]
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    mutex = kernel32.CreateMutexW(None, True, "Local\\StudyFlow.Desktop")
+    if ctypes.get_last_error() == 183:
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        user32.FindWindowW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p]
+        user32.FindWindowW.restype = ctypes.c_void_p
+        user32.ShowWindow.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        user32.SetForegroundWindow.argtypes = [ctypes.c_void_p]
+        window = user32.FindWindowW(None, "StudyFlow")
+        if window:
+            user32.ShowWindow(window, 9)  # SW_RESTORE
+            user32.SetForegroundWindow(window)
+        else:
+            show_error("O StudyFlow já está aberto.")
         return None
     return mutex
 
 
-def available_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
-        listener.bind(("127.0.0.1", 0))
-        return int(listener.getsockname()[1])
-
-
-def make_tray_image():
-    from PIL import Image, ImageDraw
-
-    image = Image.new("RGBA", (64, 64), (21, 28, 48, 255))
-    draw = ImageDraw.Draw(image)
-    draw.rounded_rectangle((4, 4, 60, 60), radius=16, fill=(82, 103, 223, 255))
-    draw.polygon([(32, 11), (36, 26), (51, 32), (36, 36), (32, 52), (28, 36), (13, 32), (28, 26)], fill=(255, 255, 255, 255))
-    return image
+APP_PORT = 43187
 
 
 def run() -> None:
-    import pystray
     import uvicorn
+    import webview
 
     data = set_runtime_environment()
-    mutex = acquire_single_instance(data)
+    mutex = acquire_single_instance()
     if mutex is None:
         return
 
@@ -90,12 +81,13 @@ def run() -> None:
         sys.path.insert(0, str(resource_root() / "backend"))
     from app.main import app
 
-    port = available_port()
-    url = f"http://127.0.0.1:{port}"
+    # Keep one stable origin so the embedded webview can retain the login token
+    # in localStorage between app launches.
+    url = f"http://127.0.0.1:{APP_PORT}"
     server = uvicorn.Server(uvicorn.Config(
         app,
         host="127.0.0.1",
-        port=port,
+        port=APP_PORT,
         log_level="critical",
         access_log=False,
     ))
@@ -112,33 +104,28 @@ def run() -> None:
         server.should_exit = True
         raise RuntimeError("A API do StudyFlow demorou demais para iniciar.")
 
-    (data / "instance-url").write_text(url, encoding="ascii")
-
-    def exit_app(icon, _item):
-        server.should_exit = True
-        icon.stop()
-
-    tray = pystray.Icon(
+    webview.create_window(
         "StudyFlow",
-        make_tray_image(),
-        "StudyFlow",
-        menu=pystray.Menu(
-            pystray.MenuItem("Abrir StudyFlow", lambda _icon, _item: webbrowser.open(url), default=True),
-            pystray.MenuItem("Sair", exit_app),
-        ),
+        url,
+        width=1280,
+        height=860,
+        min_size=(900, 620),
+        background_color="#151c30",
     )
-    tray.run_detached()
-    webbrowser.open(url)
     try:
-        server_thread.join()
+        webview.start(
+            gui="edgechromium",
+            private_mode=False,
+            storage_path=str(data / "webview"),
+        )
     finally:
-        tray.stop()
-        try:
-            (data / "instance-url").unlink()
-        except FileNotFoundError:
-            pass
-        ctypes.windll.kernel32.ReleaseMutex(mutex)
-        ctypes.windll.kernel32.CloseHandle(mutex)
+        server.should_exit = True
+        server_thread.join(timeout=10)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.ReleaseMutex.argtypes = [ctypes.c_void_p]
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.ReleaseMutex(mutex)
+        kernel32.CloseHandle(mutex)
 
 
 if __name__ == "__main__":
@@ -151,4 +138,13 @@ if __name__ == "__main__":
             log_path.write_text(f"{exc}\n\n{traceback.format_exc()}", encoding="utf-8")
         except OSError:
             pass
-        show_error(f"O StudyFlow não conseguiu iniciar.\n\n{exc}")
+        detail = str(exc)
+        if "webview2" in detail.lower() or "edgechromium" in detail.lower():
+            message = (
+                "O Microsoft Edge WebView2 Runtime não está disponível neste computador. "
+                "Instale o WebView2 Runtime e abra o StudyFlow novamente.\n\n"
+                f"Detalhes: {detail}"
+            )
+        else:
+            message = f"O StudyFlow não conseguiu iniciar.\n\n{detail}"
+        show_error(message)

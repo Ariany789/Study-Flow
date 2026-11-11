@@ -1,0 +1,47 @@
+name: Windows installer release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Prepare backend environment
+        run: |
+          python -m venv backend/.venv
+          & .\backend\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: frontend
+
+      - name: Build Windows installer
+        run: '& .\backend\.venv\Scripts\python.exe tools\build_windows_installer.py "$env:GITHUB_REF_NAME"'
+
+      - name: Publish GitHub release
+        run: gh release create "$env:GITHUB_REF_NAME" "dist-installer/StudyFlow-Setup.exe" --title "StudyFlow $env:GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -34,11 +34,13 @@ No Windows, ative o ambiente com `.venv\Scripts\activate`.
 
 ### Instalador Windows
 
-O arquivo para compartilhar é `dist-installer/StudyFlow-Setup.exe`. Ele instala somente o executável do StudyFlow e cria um atalho; Python, Node.js e o código da interface já vão dentro do app. O executável abre o StudyFlow no navegador padrão e fica disponível pelo ícone na área de notificação do Windows. O construtor do instalador requer Python do projeto, Node.js/Corepack e Inno Setup 6; essas ferramentas são necessárias apenas para gerar o instalador, não para quem o instala.
+O arquivo para compartilhar é `dist-installer/StudyFlow-Setup.exe`. Ele instala o executável do StudyFlow e cria um atalho no menu Iniciar; a interface abre em uma janela própria do StudyFlow, sem deixar uma aba do navegador aberta. Python, Node.js e o código da interface já vão dentro do app. O instalador verifica se o Microsoft Edge WebView2 Runtime está presente e, se faltar, o instala durante a configuração. O construtor do instalador requer Python do projeto, Node.js/Corepack, Inno Setup 6 e acesso à internet para baixar o pequeno instalador oficial do WebView2. Essas ferramentas são necessárias apenas para gerar o instalador, não para quem o instala.
 
-As contas e os dados de cada pessoa ficam em `%LOCALAPPDATA%\StudyFlow`, em um SQLite local independente do Supabase. Desinstalar o app remove o executável, mas preserva os dados para uma instalação posterior.
+O programa fica em `%LOCALAPPDATA%\Programs\StudyFlow`. As contas, os dados e a sessão ficam em `%LOCALAPPDATA%\StudyFlow`; o banco local SQLite é salvo em `studyflow.db`. Fechar ou reabrir o app não apaga esses dados, e desinstalar o programa preserva essa pasta para uma instalação posterior. Essa pasta de dados fica no local padrão do Windows para dados de aplicativos, sem espalhar arquivos do projeto em Documentos ou na área de trabalho.
 
-Para gerar o instalador em Windows após preparar o ambiente do projeto, execute: `backend\.venv\Scripts\python.exe tools\build_windows_installer.py`.
+Para gerar o instalador em Windows após preparar o ambiente do projeto, execute no PowerShell: `& .\backend\.venv\Scripts\python.exe tools\build_windows_installer.py`.
+
+Para publicar uma versão baixável no GitHub, envie as alterações para `main` e crie uma tag de versão, por exemplo `git tag v1.0.0` seguida de `git push origin v1.0.0`. O GitHub Actions gera o instalador Windows e o anexa a uma nova versão em Releases.
 
 ### Frontend
 

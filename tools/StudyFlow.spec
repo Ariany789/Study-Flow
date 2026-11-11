@@ -26,6 +26,7 @@ hiddenimports = [
     "uvicorn.lifespan.on",
     "email_validator",
     "multipart",
+    "webview",
 ]
 
 for package in (
@@ -40,7 +41,7 @@ for package in (
     "passlib",
     "email_validator",
     "multipart",
-    "pystray",
+    "webview",
     "PIL",
 ):
     package_datas, package_binaries, package_hiddenimports = collect_all(package)
